@@ -63,7 +63,7 @@ export default function SeekerPage() {
             <button className="filter-btn" data-filter="engineering">Engineering</button>
           </div>
           <div className="jobs-grid" id="jobsGrid">
-            {/* Static Job Cards - matching user.html design */}
+            {/* Job Card 1 - Senior Product Designer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="100">
               <div className="company-logo" style={{ color: 'var(--accent)' }}>
                 <i className="ph-fill ph-dribbble-logo"></i>
@@ -72,7 +72,7 @@ export default function SeekerPage() {
                 <h3>Senior Product Designer</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> Remote</span>
-                  <span><i className="ph-fill ph-clock"></i> Full Time</span>
+                  <span><i className="ph-fill ph-buildings"></i> Google</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   Join our design team to shape the future of digital experiences for millions of users worldwide.
@@ -84,6 +84,7 @@ export default function SeekerPage() {
               </div>
             </div>
 
+            {/* Job Card 2 - Frontend Developer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="150">
               <div className="company-logo" style={{ color: '#3b82f6' }}>
                 <i className="ph-fill ph-code"></i>
@@ -92,7 +93,7 @@ export default function SeekerPage() {
                 <h3>Frontend Developer (React)</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> New York, USA</span>
-                  <span><i className="ph-fill ph-clock"></i> Contract</span>
+                  <span><i className="ph-fill ph-buildings"></i> Microsoft</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   Build cutting-edge web applications with modern React, TypeScript, and Next.js stack.
@@ -104,6 +105,7 @@ export default function SeekerPage() {
               </div>
             </div>
 
+            {/* Job Card 3 - Backend Engineer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="200">
               <div className="company-logo" style={{ color: '#10b981' }}>
                 <i className="ph-fill ph-cpu"></i>
@@ -112,18 +114,19 @@ export default function SeekerPage() {
                 <h3>Backend Engineer (Node.js)</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> San Francisco, USA</span>
-                  <span><i className="ph-fill ph-clock"></i> Full Time</span>
+                  <span><i className="ph-fill ph-buildings"></i> Apple</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
-                  Design and implement scalable APIs and microservices for high-traffic applications.
+                  Design and implement scalable backend systems using Node.js, PostgreSQL, and cloud infrastructure.
                 </p>
               </div>
               <div className="job-right">
-                <span className="salary-range">$110k - $130k</span>
+                <span className="salary-range">$110k - $135k</span>
                 <button className="btn btn-gradient apply-btn">Apply Now</button>
               </div>
             </div>
 
+            {/* Job Card 4 - Data Scientist */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="250">
               <div className="company-logo" style={{ color: '#f59e0b' }}>
                 <i className="ph-fill ph-chart-line"></i>
@@ -132,7 +135,7 @@ export default function SeekerPage() {
                 <h3>Data Scientist</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> Remote</span>
-                  <span><i className="ph-fill ph-clock"></i> Full Time</span>
+                  <span><i className="ph-fill ph-buildings"></i> Facebook</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   Leverage machine learning to solve complex business problems and drive product decisions.
@@ -144,6 +147,7 @@ export default function SeekerPage() {
               </div>
             </div>
 
+            {/* Job Card 5 - DevOps Engineer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="300">
               <div className="company-logo" style={{ color: '#8b5cf6' }}>
                 <i className="ph-fill ph-shield-check"></i>
@@ -152,7 +156,7 @@ export default function SeekerPage() {
                 <h3>DevOps Engineer</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> Austin, USA</span>
-                  <span><i className="ph-fill ph-clock"></i> Full Time</span>
+                  <span><i className="ph-fill ph-buildings"></i> Amazon</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   Build and maintain cloud infrastructure, CI/CD pipelines, and monitoring systems.
@@ -164,6 +168,7 @@ export default function SeekerPage() {
               </div>
             </div>
 
+            {/* Job Card 6 - Mobile Developer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="350">
               <div className="company-logo" style={{ color: '#ec4899' }}>
                 <i className="ph-fill ph-mobile"></i>
@@ -172,7 +177,7 @@ export default function SeekerPage() {
                 <h3>Mobile Developer (React Native)</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> Remote</span>
-                  <span><i className="ph-fill ph-clock"></i> Contract</span>
+                  <span><i className="ph-fill ph-buildings"></i> Twitter</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   Develop cross-platform mobile applications with React Native and Expo.
@@ -184,6 +189,7 @@ export default function SeekerPage() {
               </div>
             </div>
 
+            {/* Job Card 7 - Full Stack Engineer */}
             <div className="job-card" data-aos="fade-up" data-aos-delay="400">
               <div className="company-logo" style={{ color: '#06b6d4' }}>
                 <i className="ph-fill ph-gear-six"></i>
@@ -192,7 +198,7 @@ export default function SeekerPage() {
                 <h3>Full Stack Engineer</h3>
                 <div className="job-tags">
                   <span><i className="ph-fill ph-map-pin"></i> London, UK</span>
-                  <span><i className="ph-fill ph-clock"></i> Full Time</span>
+                  <span><i className="ph-fill ph-buildings"></i> Netflix</span>
                 </div>
                 <p style={{ color: 'var(--gray)', marginTop: '10px', fontSize: '0.95rem' }}>
                   End-to-end feature development across the entire stack using modern technologies.
