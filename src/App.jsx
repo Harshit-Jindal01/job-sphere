@@ -1,14 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import RoleSelection from './pages/RoleSelection';
-
-function SeekerPlaceholder() {
-  return (
-    <div style={{ padding: '50px', textAlign: 'center', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-      <h1>Seeker Dashboard — migration coming next</h1>
-    </div>
-  );
-}
+import SeekerPage from './pages/SeekerPage';
 
 function CompanyPlaceholder() {
   return (
@@ -23,7 +16,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<RoleSelection />} />
-        <Route path="/seeker" element={<SeekerPlaceholder />} />
+        <Route path="/seeker" element={<SeekerPage />} />
         <Route path="/company" element={<CompanyPlaceholder />} />
       </Routes>
     </BrowserRouter>
