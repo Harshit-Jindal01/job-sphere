@@ -1,15 +1,27 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Hexagon, ArrowsLeftRight } from '@phosphor-icons/react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Hexagon, ArrowsLeftRight, UserCircle, Buildings } from '@phosphor-icons/react';
+import { useAuth } from '../context/AuthContext';
 
-export default function Navbar({ onAuthClick }) {
+export default function Navbar({ onAuthClick, user, userData }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleSwitchRole = () => {
     const currentRole = localStorage.getItem('jobsphere_role');
     const newRole = currentRole === 'user' ? 'company' : 'user';
     localStorage.setItem('jobsphere_role', newRole);
-    window.location.href = newRole === 'user' ? '/seeker' : '/company';
+    if (newRole === 'user') {
+      navigate('/seeker');
+    } else {
+      navigate('/company');
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
   };
 
   return (
@@ -28,10 +40,31 @@ export default function Navbar({ onAuthClick }) {
         </nav>
 
         <div className="auth-buttons">
-          <button className="switch-role-btn" onClick={handleSwitchRole}>
-            <ArrowsLeftRight /> Switch Role
-          </button>
-          <button className="btn btn-outline login-btn" onClick={onAuthClick}>Sign In</button>
+          {user ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button className="switch-role-btn" onClick={handleSwitchRole}>
+                <ArrowsLeftRight /> Switch Role
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--dark)' }}>
+                  {userData?.name || user.email?.split('@')[0] || 'User'}
+                </span>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>
+                  {(userData?.name || user.email?.[0] || 'U').toUpperCase()}
+                </div>
+                <button className="btn btn-outline" onClick={handleLogout} style={{ padding: '8px 16px' }}>
+                  Logout
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button className="switch-role-btn" onClick={handleSwitchRole}>
+                <ArrowsLeftRight /> Switch Role
+              </button>
+              <button className="btn btn-outline login-btn" onClick={onAuthClick}>Sign In</button>
+            </>
+          )}
         </div>
       </div>
     </header>
