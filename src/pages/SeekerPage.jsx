@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from '../components/Navbar';
+import PostCard from '../components/PostCard';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { fetchJobs, fetchUserApplications, fetchUserPosts, fetchUserConnections, applyToJob, createPost } from '../services/firebaseService';
+import {
+  fetchJobs,
+  fetchUserApplications,
+  fetchPosts,
+  likePost,
+  addComment,
+  fetchPostComments,
+  createPost,
+  formatPostTime,
+  subscribeToPosts,
+  fetchUserConnections
+} from '../services/firebaseService';
 import PostModal from '../components/PostModal';
 import ApplyModal from '../components/ApplyModal';
 
@@ -19,6 +31,12 @@ export default function SeekerPage() {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [expandedComments, setExpandedComments] = useState({});
+  const [comments, setComments] = useState({});
+  const [commentTexts, setCommentTexts] = useState({});
+  const [isLiking, setIsLiking] = useState({});
+  const [isCommenting, setIsCommenting] = useState({});
+  const [isLoadingComments, setIsLoadingComments] = useState({});
 
   useEffect(() => {
     // Fetch jobs
@@ -41,10 +59,11 @@ export default function SeekerPage() {
         try {
           const applicationsData = await fetchUserApplications(user.uid);
           setApplications(applicationsData);
-          
-          const postsData = await fetchUserPosts(user.uid);
+
+          // Fetch all posts for community feed
+          const { posts: postsData } = await fetchPosts();
           setPosts(postsData);
-          
+
           const connectionsData = await fetchUserConnections(user.uid);
           setConnections(connectionsData);
         } catch (error) {
@@ -52,6 +71,13 @@ export default function SeekerPage() {
         }
       };
       loadUserData();
+
+      // Subscribe to real-time posts updates
+      const unsubscribe = subscribeToPosts((posts) => {
+        setPosts(posts);
+      });
+
+      return () => unsubscribe();
     }
   }, [user]);
 
@@ -78,16 +104,74 @@ export default function SeekerPage() {
 
   const handlePostSubmit = async (content, imageUrl) => {
     try {
-      await createPost(content, imageUrl, user.uid);
+      await createPost(content, imageUrl);
       showNotification('Post created successfully!', 'success');
       setIsPostModalOpen(false);
-      
-      // Refresh posts
-      const postsData = await fetchUserPosts(user.uid);
-      setPosts(postsData);
+      // The real-time subscription will automatically update the posts
     } catch (error) {
       console.error('Error creating post:', error);
       showNotification('Failed to create post', 'error');
+    }
+  };
+
+  // Toggle like on a post
+  const handleLikePost = async (postId) => {
+    if (isLiking[postId]) return;
+    setIsLiking(prev => ({ ...prev, [postId]: true }));
+    try {
+      await likePost(postId);
+      // Real-time subscription will update the posts
+    } catch (error) {
+      console.error('Error liking post:', error);
+      showNotification('Failed to like post', 'error');
+    } finally {
+      setIsLiking(prev => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  // Toggle comments visibility
+  const toggleComments = (postId) => {
+    setExpandedComments(prev => {
+      const newState = { ...prev, [postId]: !prev[postId] };
+      if (newState[postId] && !comments[postId]) {
+        // Load comments when expanding
+        loadComments(postId);
+      }
+      return newState;
+    });
+  };
+
+  // Load comments for a post
+  const loadComments = async (postId) => {
+    setIsLoadingComments(prev => ({ ...prev, [postId]: true }));
+    try {
+      const commentsData = await fetchPostComments(postId);
+      setComments(prev => ({ ...prev, [postId]: commentsData }));
+    } catch (error) {
+      console.error('Error loading comments:', error);
+    } finally {
+      setIsLoadingComments(prev => ({ ...prev, [postId]: false }));
+    }
+  };
+
+  // Add a comment to a post
+  const handleAddComment = async (postId) => {
+    const text = commentTexts[postId]?.trim();
+    if (!text || isCommenting[postId]) return;
+    
+    setIsCommenting(prev => ({ ...prev, [postId]: true }));
+    try {
+      await addComment(postId, text);
+      setCommentTexts(prev => ({ ...prev, [postId]: '' }));
+      // Real-time subscription will update the post's commentCount
+      // Reload comments to show the new one
+      const commentsData = await fetchPostComments(postId);
+      setComments(prev => ({ ...prev, [postId]: commentsData }));
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showNotification('Failed to add comment', 'error');
+    } finally {
+      setIsCommenting(prev => ({ ...prev, [postId]: false }));
     }
   };
 
@@ -258,8 +342,8 @@ export default function SeekerPage() {
       <section className="posts-section" id="posts">
         <div className="container">
           <div className="section-header" data-aos="fade-up">
-            <h2>My Posts</h2>
-            <p style={{ color: 'var(--gray)' }}>Share updates and connect with professionals</p>
+            <h2>Community Posts</h2>
+            <p style={{ color: 'var(--gray)' }}>Achievements, updates, and stories from our community</p>
           </div>
           <div className="section-actions" data-aos="fade-up" data-aos-delay="100">
             <button 
@@ -274,32 +358,34 @@ export default function SeekerPage() {
           <div className="posts-list" style={{ marginTop: '30px' }}>
             {posts.length > 0 ? (
               posts.map((post, index) => (
-                <div className="post-card" key={post.id || index} data-aos="fade-up" data-aos-delay={100 + index * 50}>
-                  <div className="post-header">
-                    <div className="post-avatar">
-                      <i className="ph-fill ph-user-circle" style={{ fontSize: '1.5rem' }}></i>
-                    </div>
-                    <div className="post-info">
-                      <h4>{user?.displayName || 'You'}</h4>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--gray)' }}>
-                        {post.timestamp ? new Date(post.timestamp.seconds ? post.timestamp.seconds * 1000 : post.timestamp).toLocaleString() : 'Recently'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="post-content">
-                    <p>{post.content || post.text || 'No content'}</p>
-                  </div>
-                  {post.imageUrl && (
-                    <div className="post-image">
-                      <img src={post.imageUrl} alt="Post image" />
-                    </div>
-                  )}
-                </div>
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  user={user}
+                  index={index}
+                  expandedComments={expandedComments}
+                  setExpandedComments={setExpandedComments}
+                  comments={comments}
+                  setComments={setComments}
+                  commentTexts={commentTexts}
+                  setCommentTexts={setCommentTexts}
+                  isLiking={isLiking}
+                  setIsLiking={setIsLiking}
+                  isCommenting={isCommenting}
+                  setIsCommenting={setIsCommenting}
+                  isLoadingComments={isLoadingComments}
+                  setIsLoadingComments={setIsLoadingComments}
+                  handleLikePost={handleLikePost}
+                  toggleComments={toggleComments}
+                  loadComments={loadComments}
+                  handleAddComment={handleAddComment}
+                  formatPostTime={formatPostTime}
+                />
               ))
             ) : (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--gray)' }}>
                 <i className="ph ph-lightbulb" style={{ fontSize: '2.5rem', marginBottom: '15px', display: 'block', opacity: '0.3' }}></i>
-                <p>No posts yet. Create your first post to connect with the community!</p>
+                <p>No posts yet. Be the first to share!</p>
               </div>
             )}
           </div>
