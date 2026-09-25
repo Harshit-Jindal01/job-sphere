@@ -88,7 +88,7 @@ const CompanyDashboard = () => {
                 <div key={job.id} style={{ padding: '20px', borderRadius: '16px', background: 'white', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>                  <div>
                     <h3 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--dark)' }}>{job.title}</h3>
                     <p style={{ color: 'var(--gray)', marginBottom: '8px' }}><i className="ph ph-map-pin" /> {job.location} • <i className="ph ph-currency-dollar" /> {job.salary}</p>
-                    <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Posted {new Date(job.postedAt?.seconds * 1000).toLocaleDateString()}</p>
+                    <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Posted {job.postedAt ? new Date(job.postedAt.seconds * 1000).toLocaleDateString() : 'Recently'}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '10px' }}>                    <button
                       className="btn btn-outline"
@@ -120,7 +120,7 @@ const CompanyDashboard = () => {
             <div style={{ display: 'grid', gap: '20px' }}>              {applications.map((app) => (
                 <div key={app.id} style={{ padding: '20px', borderRadius: '16px', background: 'white', border: '1px solid #e2e8f0' }}>                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>                    <div>
                       <h3 style={{ fontSize: '1.2rem', marginBottom: '8px', color: 'var(--dark)' }}>{app.jobTitle}</h3>
-                      <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Applied by {app.applicantName} on {new Date(app.appliedAt?.seconds * 1000).toLocaleDateString()}</p>
+                      <p style={{ color: 'var(--gray)', fontSize: '0.9rem' }}>Applied by {app.applicantName} on {app.appliedAt ? new Date(app.appliedAt.seconds * 1000).toLocaleDateString() : 'Recently'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '10px' }}>                      {app.status === 'pending' && (
                         <>

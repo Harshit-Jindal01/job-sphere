@@ -220,18 +220,30 @@ export default function SeekerPage() {
           </div>
           <div className="applications-grid">
             {applications.length > 0 ? (
-              applications.map((app, index) => (
-                <div className="application-card" key={app.id || index} data-aos="fade-up" data-aos-delay={100 + index * 50}>
-                  <div className="application-header">
-                    <h4>{app.jobTitle || 'Job Application'}</h4>
-                    <span className={`status-badge ${app.status || 'pending'}`}>{app.status || 'Pending'}</span>
+              applications
+                .filter(app => {
+                  if (activeStatus === 'all') return true;
+                  if (activeStatus === 'pending') return app.status === 'pending';
+                  if (activeStatus === 'reviewed') return app.status === 'accepted' || app.status === 'rejected';
+                  if (activeStatus === 'interview') return app.status === 'interview';
+                  return true;
+                })
+                .map((app, index) => (
+                  <div className="application-card" key={app.id || index} data-aos="fade-up" data-aos-delay={100 + index * 50}>
+                    <div className="application-header">
+                      <h4>{app.jobTitle || 'Job Application'}</h4>
+                      <span className={`status-badge ${app.status || 'pending'}`}>{app.status || 'Pending'}</span>
+                    </div>
+                    <div className="application-details">
+                      <p><strong>Company:</strong> {app.companyName || app.company || 'N/A'}</p>
+                      <p><strong>Applied:</strong> {
+                        app.appliedAt ? new Date(app.appliedAt.seconds ? app.appliedAt.seconds * 1000 : app.appliedAt).toLocaleDateString() :
+                        app.timestamp ? new Date(app.timestamp.seconds ? app.timestamp.seconds * 1000 : app.timestamp).toLocaleDateString() :
+                        'Recently'
+                      }</p>
+                    </div>
                   </div>
-                  <div className="application-details">
-                    <p><strong>Company:</strong> {app.company || 'N/A'}</p>
-                    <p><strong>Applied:</strong> {app.timestamp ? new Date(app.timestamp.seconds ? app.timestamp.seconds * 1000 : app.timestamp).toLocaleDateString() : 'Recently'}</p>
-                  </div>
-                </div>
-              ))
+                ))
             ) : (
               <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--gray)' }}>
                 <i className="ph ph-inbox" style={{ fontSize: '3rem', marginBottom: '20px', display: 'block', opacity: '0.4' }}></i>
@@ -349,7 +361,18 @@ export default function SeekerPage() {
       
       <ApplyModal 
         isOpen={isApplyModalOpen} 
-        onClose={() => setIsApplyModalOpen(false)} 
+        onClose={async () => {
+          setIsApplyModalOpen(false);
+          // Reload applications after successful submission
+          if (user) {
+            try {
+              const applicationsData = await fetchUserApplications(user.uid);
+              setApplications(applicationsData);
+            } catch (error) {
+              console.error('Error fetching user applications:', error);
+            }
+          }
+        }} 
         job={selectedJob}
       />
 
