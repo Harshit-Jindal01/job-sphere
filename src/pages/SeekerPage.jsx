@@ -53,7 +53,7 @@ export default function SeekerPage() {
       };
       loadUserData();
     }
-  }, [user, showNotification]);
+  }, [user]);
 
   const handleFilterClick = (filter) => {
     setActiveFilter(filter);
