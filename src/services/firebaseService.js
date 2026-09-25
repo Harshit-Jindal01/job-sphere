@@ -8,9 +8,31 @@ import { auth } from '../config/firebase';
 
 // ========== JOBS ==========
 export const fetchJobs = async () => {
-  const q = query(collection(db, 'jobs'), orderBy('createdAt', 'desc'));
+  const q = query(collection(db, 'jobs'), orderBy('postedAt', 'desc'));
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const fetchCompanyJobs = async (companyUid) => {
+  const q = query(
+    collection(db, 'jobs'),
+    where('postedBy', '==', companyUid),
+    orderBy('postedAt', 'desc')
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+export const subscribeToCompanyJobs = (companyUid, callback) => {
+  const q = query(
+    collection(db, 'jobs'),
+    where('postedBy', '==', companyUid),
+    orderBy('postedAt', 'desc')
+  );
+  return onSnapshot(q, (snap) => {
+    const jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(jobs);
+  });
 };
 
 export const fetchJobById = async (jobId) => {
@@ -24,7 +46,7 @@ export const createJob = async (jobData, userId) => {
     postedBy: userId,
     postedByName: auth.currentUser?.displayName || '',
     postedByPhoto: auth.currentUser?.photoURL || '',
-    createdAt: serverTimestamp(),
+    postedAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
   const ref = await addDoc(collection(db, 'jobs'), data);
