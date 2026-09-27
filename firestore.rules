@@ -1,0 +1,281 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========== HELPER FUNCTIONS ==========
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isCompany(userId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role == 'company';
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(userId)) &&
+             get(/databases/$(database)/documents/users/$(userId)).data.role == 'user';
+    }
+
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    // ========== USERS ==========
+    match /users/{userId} {
+      // Owner reads their own document.
+      allow read: if isOwner(userId);
+
+      // ROLE SEPARATION SUPPORT (one email = one role).
+      // To enforce "an email already registered as a Job Seeker cannot register
+      // as a Company" (and vice versa) the client has to answer exactly one
+      // question: "is this email already registered, and with which role?".
+      // This grant answers that and nothing more: a signed-in caller may run a
+      // `where('email', '==', <own email>)` query over /users.
+      //   * It can only ever match documents whose `email` equals the caller's
+      //     own token email, so no other person's document is ever readable.
+      //   * A query for any other email simply matches nothing.
+      //   * `list` only - it does not grant `get` on foreign documents and it
+      //     grants no writes at all. Writes stay owner-only (see below).
+      allow list: if isAuthenticated()
+        && request.auth.token.email != null
+        && resource.data.email == request.auth.token.email;
+
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && (request.resource.data.role == 'user' || request.resource.data.role == 'company');
+      allow update: if isOwner(userId)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email;
+      allow delete: if false;
+    }
+
+    // ========== USER PROFILES ==========
+    match /userProfiles/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if isOwner(userId) && request.resource.data.uid == resource.data.uid;
+      allow delete: if false;
+    }
+
+    // ========== JOBS ==========
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.postedBy == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.postedBy == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.postedBy == request.auth.uid;
+    }
+
+    // ========== APPLICATIONS ==========
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.applicantUid == request.auth.uid ||
+        resource.data.companyUid == request.auth.uid
+      );
+      allow create: if isAuthenticated()
+        && request.resource.data.applicantUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isAuthenticated()
+        && resource.data.companyUid == request.auth.uid
+        && (request.resource.data.status == 'pending'
+            || request.resource.data.status == 'accepted'
+            || request.resource.data.status == 'rejected')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // ========== POSTS ==========
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+
+      // User creates post with their UID as authorId
+      allow create: if isAuthenticated()
+        && request.resource.data.authorId == request.auth.uid;
+
+      // Author can update their own post (content, imageUrl)
+      // ANY authenticated user can update likes array (toggleLike) or commentCount (addComment)
+      allow update: if isAuthenticated() && (
+        // Author can update content, imageUrl
+        (resource.data.authorId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['content', 'imageUrl', 'updatedAt']))
+        // Any user can toggle their own like (add/remove their UID from likes array)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'updatedAt'])
+            && (
+              // Adding like: user's UID is in new likes but not in old
+              (request.auth.uid in request.resource.data.likes && !(request.auth.uid in resource.data.likes)
+               && request.resource.data.likes.size() == resource.data.likes.size() + 1)
+              // Removing like: user's UID was in old likes but not in new
+              || (!(request.auth.uid in request.resource.data.likes) && request.auth.uid in resource.data.likes
+                  && request.resource.data.likes.size() == resource.data.likes.size() - 1)
+            ))
+        // Any user can increment commentCount when adding a comment
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount', 'updatedAt'])
+            && request.resource.data.commentCount == resource.data.commentCount + 1)
+      );
+
+      // Author can delete their own post
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+    }
+
+    // ========== POST COMMENTS ==========
+    match /posts/{postId}/comments/{commentId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+        && request.resource.data.authorId == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && resource.data.authorId == request.auth.uid;
+
+      allow delete: if isAuthenticated()
+        && resource.data.authorId == request.auth.uid;
+    }
+
+    // ========== CONNECTIONS ==========
+    match /connections/{connectionId} {
+      allow read: if isAuthenticated() && (
+        resource.data.from == request.auth.uid ||
+        resource.data.to == request.auth.uid
+      );
+
+      allow create: if isAuthenticated()
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.from != request.resource.data.to;
+
+      allow update: if isAuthenticated() && (
+        (resource.data.to == request.auth.uid && request.resource.data.status == 'accepted') ||
+        (resource.data.from == request.auth.uid && request.resource.data.status == 'rejected') ||
+        (resource.data.to == request.auth.uid && request.resource.data.status == 'rejected')
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isAuthenticated() && (
+        resource.data.from == request.auth.uid ||
+        resource.data.to == request.auth.uid
+      );
+    }
+
+    // ========== MEMBER DIRECTORY ==========
+    // Firestore cannot project individual fields, so member discovery cannot
+    // run against `users` (which holds every member's email address) without
+    // leaking those emails to every other signed-in user, and it cannot run
+    // against `userProfiles` (phone, date of birth, nationality, resume links).
+    //
+    // `userDirectory` is the public projection of a member's professional
+    // profile. Each member writes their OWN entry and can only publish the
+    // fields listed below. The whitelist is what keeps this safe: email, phone,
+    // date of birth, nationality and any resume/document link are NOT in it, so
+    // a member cannot publish private data to the directory even if the client
+    // is modified. `users` and `userProfiles` permissions are untouched.
+    match /userDirectory/{userId} {
+      function isSafeDirectoryEntry() {
+        return request.resource.data.keys().hasOnly([
+          'uid', 'name', 'photo', 'role', 'jobTitle', 'company', 'headline',
+          'bio', 'skills', 'skillsText', 'location', 'experience', 'degree',
+          'institution', 'linkedin', 'github', 'portfolio', 'updatedAt'
+        ])
+        // An entry must never carry an email address.
+        && !('email' in request.resource.data);
+      }
+
+      // Any signed-in member may browse the directory (that is its purpose).
+      allow read: if isAuthenticated();
+
+      // A member may only publish and maintain their OWN entry.
+      allow create: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && isSafeDirectoryEntry();
+
+      allow update: if isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.uid == userId
+        && isSafeDirectoryEntry();
+
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ========== CHATS ==========
+    match /chats/{chatId} {
+      // Reading an EXISTING conversation requires being one of its two
+      // participants.
+      //
+      // `get` additionally tolerates a missing document (resource == null).
+      // Without that, Firestore evaluates resource.data.participants on a
+      // non-existent document, raises a null-value error and DENIES the read,
+      // so a client could never check "does this conversation already exist?"
+      // before creating it - which makes starting a conversation impossible.
+      // A missing document still returns no data, so nothing is exposed.
+      allow get: if isAuthenticated()
+        && (resource == null || request.auth.uid in resource.data.participants);
+
+      // Listing conversations is only ever allowed for your own (the app always
+      // filters with participants array-contains <my uid>).
+      allow list: if isAuthenticated() && request.auth.uid in resource.data.participants;
+
+      allow create: if isAuthenticated()
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants.size() == 2;
+
+      allow update: if isAuthenticated()
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'updatedAt', 'participantNames', 'participantPhotos']);
+
+      allow delete: if false;
+    }
+
+    // ========== CHAT MESSAGES ==========
+    match /chats/{chatId}/messages/{messageId} {
+      allow read: if isAuthenticated()
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+
+      allow create: if isAuthenticated()
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        && request.resource.data.senderUid == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+        && resource.data.senderUid == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // ========== NOTIFICATIONS ==========
+    match /notifications/{notificationId} {
+      // Users can only read their own notifications
+      allow read: if isAuthenticated()
+        && resource.data.recipientUid == request.auth.uid;
+
+      // Users can only create notifications for others via system functions,
+      // but we allow create for authenticated users with strict field validation
+      // (in practice, notifications are created by Cloud Functions or trusted client operations)
+      allow create: if isAuthenticated()
+        && request.resource.data.recipientUid != request.auth.uid  // Can't notify yourself directly
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.read == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(['recipientUid', 'senderUid', 'type', 'message', 'read', 'createdAt', 'relatedId', 'relatedType']);
+
+      // Users can mark their own notifications as read
+      allow update: if isAuthenticated()
+        && resource.data.recipientUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+
+      allow delete: if isAuthenticated()
+        && resource.data.recipientUid == request.auth.uid;
+    }
+
+    // ========== DEFAULT DENY ==========
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

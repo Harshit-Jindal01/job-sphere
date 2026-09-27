@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, PaperPlane } from '@phosphor-icons/react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, FileText, PaperPlane } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { uploadToCloudinary, getCleanResumeUrl, fetchCurrentUserProfile, applyToJob } from '../services/firebaseService';
@@ -12,6 +12,7 @@ export default function ApplyModal({ isOpen, onClose, job }) {
   const [useExistingResume, setUseExistingResume] = useState(false);
   const [existingResumeUrl, setExistingResumeUrl] = useState('');
   const [existingResumeName, setExistingResumeName] = useState('');
+  const fileInputRef = useRef(null);
   const { user } = useAuth();
   const { showNotification } = useNotification();
 
@@ -86,12 +87,55 @@ export default function ApplyModal({ isOpen, onClose, job }) {
                 <label style={{ cursor: 'pointer', color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 600 }}><input type="radio" name="resumeOption" checked={useExistingResume} onChange={() => setUseExistingResume(true)} style={{ marginRight: '6px' }} /> Use this</label>
               </div>
             )}
-            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', border: `2px dashed ${useExistingResume ? '#e2e8f0' : 'var(--primary)'}`, borderRadius: '10px', cursor: 'pointer', background: useExistingResume ? 'white' : 'rgba(99,102,241,0.05)' }}>
+            <div
+              onClick={() => {
+                setUseExistingResume(false);
+                fileInputRef.current?.click();
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px',
+                border: `2px dashed ${useExistingResume ? '#e2e8f0' : 'var(--primary)'}`,
+                borderRadius: '10px',
+                cursor: 'pointer',
+                background: useExistingResume ? 'white' : 'rgba(99,102,241,0.05)'
+              }}
+            >
               <Upload style={{ fontSize: '1.5rem', color: 'var(--primary)' }} />
-              <div style={{ flex: 1 }}><p style={{ fontWeight: 600, color: useExistingResume ? 'var(--gray)' : 'var(--dark)', fontSize: '0.9rem' }}>{resumePreview ? `Selected: ${resumePreview}` : 'Upload New Resume (PDF, DOC, DOCX)'}</p><p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginTop: '2px' }}>Max 5MB</p></div>
-              <input type="radio" name="resumeOption" checked={!useExistingResume} onChange={() => setUseExistingResume(false)} style={{ marginRight: '6px' }} />
-              <input type="file" id="applyResumeInput" accept=".pdf,.doc,.docx" style={{ display: 'none' }} onChange={handleResumeChange} />
-            </label>
+              <div style={{ flex: 1 }}>
+                <p style={{
+                  fontWeight: 600,
+                  color: useExistingResume ? 'var(--gray)' : 'var(--dark)',
+                  fontSize: '0.9rem'
+                }}>
+                  {resumePreview ? `Selected: ${resumePreview}` : 'Upload New Resume (PDF, DOC, DOCX)'}
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--gray)', marginTop: '2px' }}>
+                  Max 5MB
+                </p>
+              </div>
+
+              <input
+                type="radio"
+                name="resumeOption"
+                checked={!useExistingResume}
+                onChange={() => setUseExistingResume(false)}
+                onClick={(e) => e.stopPropagation()}
+                style={{ marginRight: '6px' }}
+              />
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="applyResumeInput"
+                accept=".pdf,.doc,.docx"
+                style={{ display: 'none' }}
+                onChange={handleResumeChange}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
           </div>
           <button type="submit" className="btn btn-gradient" disabled={isLoading} style={{ width: '100%', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             {isLoading ? (

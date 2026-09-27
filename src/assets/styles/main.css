@@ -31,6 +31,15 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* ====== ANCHOR / SECTION OFFSETS ======
+   The header is `position: fixed` (see `header { ... }` below) and is ~75px
+   tall, so every in-page anchor target has to be offset or the section heading
+   disappears underneath it.
+
+   `scroll-padding-top` on the scroll container is the single mechanism used
+   here. It already applies to `scrollIntoView()` and to anchor navigation, so
+   do NOT also add `scroll-margin-top` on these sections - the two offsets add
+   up and the section lands roughly twice as far down as intended. */
 html {
     scroll-behavior: smooth;
     scroll-padding-top: 80px;
@@ -570,6 +579,9 @@ footer {
     justify-content: center;
     padding: 20px;
 }
+.modal-wrap.active {
+  display: flex;
+}
 
 .modal-box {
     background: white;
@@ -738,17 +750,17 @@ footer {
         grid-template-columns: 1fr;
         text-align: center;
     }
-    
+
     .hero-content p {
         margin-left: auto;
         margin-right: auto;
     }
-    
+
     .search-box {
         margin-left: auto;
         margin-right: auto;
     }
-    
+
     .footer-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -758,24 +770,24 @@ footer {
     .nav-menu {
         display: none;
     }
-    
+
     .hero-content h1 {
         font-size: 3rem;
     }
-    
+
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .job-card {
         grid-template-columns: 1fr;
         text-align: center;
     }
-    
+
     .company-logo {
         margin: 0 auto;
     }
-    
+
     .footer-grid {
         grid-template-columns: 1fr;
     }
@@ -1014,7 +1026,7 @@ button:disabled {
     .modal-box {
         padding: 1.5rem;
     }
-    
+
     .auth-toggle {
         padding: 10px !important;
         font-size: 0.9rem;
@@ -1056,11 +1068,11 @@ button:disabled {
     .role-badge {
         display: none;
     }
-    
+
     .switch-role-btn span {
         display: none;
     }
-    
+
     .switch-role-btn {
         padding: 8px;
     }
@@ -1377,12 +1389,12 @@ button:disabled {
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 16px;
     }
-    
+
     .media-view-close {
         top: 10px;
         right: 10px;
     }
-    
+
     .media-view-info {
         bottom: 10px;
     }
@@ -1392,7 +1404,7 @@ button:disabled {
     .media-actions {
         opacity: 1;
     }
-    
+
     .media-action-btn {
         width: 28px;
         height: 28px;
@@ -1774,19 +1786,19 @@ button:disabled {
     #profileModal .modal-box {
         padding: 1rem;
     }
-    
+
     .profile-section {
         padding: 15px;
     }
-    
+
     .dynamic-field {
         padding: 15px;
     }
-    
+
     .form-actions {
         flex-direction: column;
     }
-    
+
     .form-actions .btn {
         width: 100%;
     }
@@ -1874,4 +1886,331 @@ button:disabled {
 
 .checkmark-animation {
     animation: checkmark 0.5s ease forwards;
+}
+
+/* ====== APPLICATION STATUS BADGES ======
+   The class names come from getApplicationStatusMeta() in
+   src/utils/jobFilters.js and match the values the application pipeline
+   actually writes: pending / accepted / rejected. */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.status-badge.pending {
+    background: rgba(217, 119, 6, 0.12);
+    color: #b45309;
+}
+
+.status-badge.accepted {
+    background: rgba(5, 150, 105, 0.12);
+    color: #047857;
+}
+
+.status-badge.rejected {
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+}
+
+/* Job cards can get tall once skills + status are shown */
+.job-card {
+    align-items: flex-start;
+}
+
+.job-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.job-card .job-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+}
+
+/* ====== POSTS / COMMUNITY FEED ====== */
+.posts-section {
+    padding: 6rem 0;
+    background: var(--light);
+}
+
+.posts-section .posts-list {
+    display: grid;
+    gap: 1.5rem;
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.post-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.post-card:hover {
+    box-shadow: var(--shadow-xl);
+    transform: translateY(-2px);
+}
+
+.post-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px 20px 14px;
+}
+
+.post-avatar img {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--primary);
+    background: var(--light-gray);
+}
+
+.post-info h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.post-info p {
+    font-size: 0.8rem;
+    color: var(--gray);
+    align-items: center;
+}
+
+.post-content {
+    padding: 0 20px 16px;
+}
+
+.post-content p {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--dark);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.post-image img {
+    display: block;
+    width: 100%;
+    max-height: 500px;
+    object-fit: cover;
+    background: var(--light-gray);
+}
+
+.post-actions {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 20px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 0.85rem;
+    color: var(--gray);
+}
+
+.post-actions span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.post-actions .comments {
+    cursor: pointer;
+}
+
+.post-interactions {
+    display: flex;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 8px 12px;
+}
+
+.post-interactions button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--gray);
+    border-radius: 10px;
+    transition: all 0.2s;
+}
+
+.post-interactions button:hover:not(:disabled) {
+    background: var(--light-gray);
+    color: var(--dark);
+}
+
+.post-interactions button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.comments-section {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    padding: 14px 20px 18px;
+    background: var(--light);
+}
+
+.comments-list {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
+    font-size: 0.9rem;
+    color: var(--gray);
+}
+
+.comment {
+    display: flex;
+    gap: 10px;
+}
+
+.comment-avatar img {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--light-gray);
+}
+
+.comment-content {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 0 12px 12px 12px;
+    padding: 8px 12px;
+    flex: 1;
+}
+
+.comment-content h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--dark);
+}
+
+.comment-content p {
+    color: var(--dark);
+    word-break: break-word;
+}
+
+.comment-content small {
+    font-size: 0.75rem;
+    color: var(--gray);
+}
+
+.add-comment {
+    display: flex;
+    gap: 10px;
+}
+
+.add-comment input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 50px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    background: white;
+}
+
+.add-comment input:focus {
+    outline: 2px solid rgba(45, 106, 79, 0.35);
+    outline-offset: 1px;
+}
+
+.add-comment button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 50px;
+    background: var(--gradient-primary);
+    color: white;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.add-comment button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Loading spinner used by the post / job / apply / chat modals */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* ====== MESSAGING ====== */
+.messages-section {
+    padding: 4rem 0 6rem;
+    background: var(--light);
+}
+
+.chat-list-item:hover {
+    border-color: rgba(45, 106, 79, 0.35);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-1px);
+}
+
+.chat-list-item:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* the chat panel is docked bottom-right, above the rest of the page */
+#chatModal {
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 24px;
+}
+
+#chatModal .chat-box {
+    animation: chatSlideIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes chatSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(24px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.chat-msg + .chat-msg {
+    margin-top: 2px;
 }

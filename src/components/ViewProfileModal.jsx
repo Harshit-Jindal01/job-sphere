@@ -1,8 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { X, User, Envelope, Phone, Calendar, MapPin, Briefcase, FileText, Link, ChatCircleDots } from '@phosphor-icons/react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, User, Envelope, Phone, Calendar, MapPin, Briefcase, FileText, Link, ChatCircleDots, Buildings, Globe, UserPlus, UserCheck } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
-import { fetchUserProfile, sendConnectionRequest, acceptConnection, openDirectChat } from '../services/firebaseService';
+import {
+  fetchUserProfile,
+  sendConnectionRequest,
+  acceptConnection,
+  rejectConnection,
+  openDirectChat,
+  subscribeToConnectionWith
+} from '../services/firebaseService';
 
 const ProfileSection = ({ title, children, icon: Icon }) => (
   <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '20px', marginBottom: '16px' }}>
@@ -14,271 +21,401 @@ const ProfileSection = ({ title, children, icon: Icon }) => (
   </div>
 );
 
-const ProfileField = ({ label, value, icon: Icon }) => (
-  <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-    {Icon && <Icon style={{ fontSize: '1.2rem', color: 'var(--primary)', flexShrink: 0 }} />}
-    <div style={{ flex: 1 }}>
-      <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '2px' }}>{label}</p>
-      <p style={{ fontSize: '0.95rem', color: 'var(--dark)', fontWeight: 500 }}>{value || 'Not specified'}</p>
+const ProfileField = ({ label, value, icon: Icon }) => {
+  if (!value) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      {Icon && <Icon style={{ fontSize: '1.2rem', color: 'var(--primary)', flexShrink: 0 }} />}
+      <div style={{ flex: 1 }}>
+        <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '2px' }}>{label}</p>
+        <p style={{ fontSize: '0.95rem', color: 'var(--dark)', fontWeight: 500 }}>{value}</p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-const SocialLink = ({ url, icon: Icon }) => (
-  url ? (
+/** Skills may be stored as an array (directory) or a comma string (own profile). */
+const toSkillList = (skills) => {
+  if (Array.isArray(skills)) return skills.filter(Boolean).map(String);
+  if (typeof skills === 'string') return skills.split(',').map(s => s.trim()).filter(Boolean);
+  return [];
+};
+
+const SocialLink = ({ url, icon: Icon, label }) => {
+  if (!url) return null;
+  let host = url;
+  try {
+    host = new URL(url).hostname.replace('www.', '');
+  } catch {
+    // A malformed URL should not crash the modal.
+    host = String(url).slice(0, 30);
+  }
+  return (
     <a href={url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '8px 16px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '20px', color: 'var(--primary)', fontWeight: 600, fontSize: '0.85rem', textDecoration: 'none' }}>
       <Icon />
-      {new URL(url).hostname.replace('www.', '')}
+      {label || host}
     </a>
-  ) : null
-);
+  );
+};
 
-const StatusBadge = ({ status }) => {
-  const statusStyles = {
-    pending: { bg: 'rgba(251,191,36,0.15)', color: '#d97706', label: 'Pending' },
-    accepted: { bg: 'rgba(16,185,129,0.15)', color: '#059669', label: 'Connected' },
-    rejected: { bg: 'rgba(239,68,68,0.15)', color: '#dc2626', label: 'Rejected' }
+const Chip = ({ children, tone = 'primary' }) => {
+  const tones = {
+    primary: { background: 'rgba(99,102,241,0.1)', color: 'var(--primary)' },
+    green: { background: 'rgba(16,185,129,0.1)', color: '#059669' },
+    amber: { background: 'rgba(234,179,8,0.1)', color: '#d97706' }
   };
-
-  const style = statusStyles[status] || statusStyles.pending;
-
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', background: style.bg, color: style.color, borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600 }}>
-      {style.label}
+    <span style={{ padding: '6px 12px', background: tones[tone].background, color: tones[tone].color, borderRadius: '20px', fontSize: '0.85rem' }}>
+      {children}
     </span>
   );
 };
 
-export default function ViewProfileModal({ isOpen, onClose, userId }) {
+const isCompany = (profile) => profile?.role === 'company';
+
+/**
+ * A single profile viewer used everywhere: from Find People, from the
+ * connections list, and for the signed-in member's own profile.
+ *
+ * For another member it renders ONLY the public `userDirectory` projection.
+ * Private fields (email, phone, date of birth, nationality, resume) belong to
+ * the owner and are not readable - or shown - for anybody else.
+ */
+export default function ViewProfileModal({ isOpen, onClose, userId, onStartChat, onEditProfile }) {
   const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState(null);
-  const [connectionId, setConnectionId] = useState(null);
-  const { user } = useAuth();
+  const [error, setError] = useState(null);
+  // 'none' | 'sent' | 'received' | 'accepted' | 'rejected'
+  const [connectionState, setConnectionState] = useState('none');
+  const [pendingConnectionId, setPendingConnectionId] = useState(null);
+  const [isActing, setIsActing] = useState(false);
+  const { user, userData } = useAuth();
   const { showNotification } = useNotification();
 
-  useEffect(() => {
-    if (isOpen && userId) {
-      loadProfile();
-    }
-  }, [isOpen, userId]);
+  const isSelf = Boolean(user && userId === user.uid);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
+    if (!userId) {
+      setProfile(null);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
+    setError(null);
+    setConnectionState('none');
+    setPendingConnectionId(null);
     try {
       const data = await fetchUserProfile(userId);
+      if (!data) {
+        setProfile(null);
+        setError(
+          isSelf
+            ? 'Your profile could not be loaded.'
+            : 'This member has not published a public profile yet.'
+        );
+        return;
+      }
       setProfile(data);
-      checkConnectionStatus(data);
     } catch (e) {
       console.error('Failed to load profile:', e);
-      showNotification('Failed to load profile', 'error');
+      setProfile(null);
+      setError('Failed to load this profile.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId, isSelf]);
 
-  const checkConnectionStatus = async (profileData) => {
-    if (!user || !profileData) return;
+  useEffect(() => {
+    if (!isOpen) return;
+    loadProfile();
+  }, [isOpen, loadProfile]);
 
-    try {
-      // Check if current user sent a request
-      const sentRequests = await fetchSentRequests(user.uid);
-      const sentRequest = sentRequests.find(req => req.to === userId);
+  // Connection state. The connection document is the source of truth; the
+  // previous implementation called three service functions that were never
+  // imported, which is why this always threw and the buttons never appeared.
+  const refreshConnectionState = useCallback(() => {
+    if (!user || !userId || isSelf) return undefined;
+    return subscribeToConnectionWith(user.uid, userId, (state) => {
+      setConnectionState(state.status);
+      setPendingConnectionId(state.connectionId);
+    }, (message) => showNotification(message, 'error'));
+  }, [user, userId, isSelf, showNotification]);
 
-      // Check if current user received a request
-      const receivedRequests = await fetchReceivedRequests(user.uid);
-      const receivedRequest = receivedRequests.find(req => req.from === userId);
-
-      // Check if already connected
-      const connections = await fetchConnections(user.uid);
-      const isConnected = connections.some(conn =>
-        (conn.from === user.uid && conn.to === userId) ||
-        (conn.to === user.uid && conn.from === userId)
-      );
-
-      if (isConnected) {
-        setConnectionStatus('accepted');
-      } else if (sentRequest) {
-        setConnectionStatus('pending');
-        setConnectionId(sentRequest.id);
-      } else if (receivedRequest) {
-        setConnectionStatus('pending');
-        setConnectionId(receivedRequest.id);
-      } else {
-        setConnectionStatus(null);
-      }
-    } catch (e) {
-      console.error('Failed to check connection status:', e);
-    }
-  };
+  useEffect(() => {
+    if (!isOpen || isSelf) return undefined;
+    return refreshConnectionState();
+  }, [isOpen, isSelf, refreshConnectionState]);
 
   const handleConnect = async () => {
-    if (!user || !profile) return;
-
+    if (!user || !profile || isActing) return;
+    setIsActing(true);
     try {
       const requestId = await sendConnectionRequest(
         userId,
         profile.name || 'User',
         profile.photo || ''
       );
-      setConnectionStatus('pending');
-      setConnectionId(requestId);
-      showNotification('Connection request sent!', 'success');
+      setConnectionState('sent');
+      setPendingConnectionId(requestId);
+      showNotification(`Connection request sent to ${profile.name}.`, 'success');
     } catch (e) {
       console.error('Failed to send connection request:', e);
-      showNotification(e.message || 'Failed to send connection request', 'error');
+      showNotification(e?.message || 'Failed to send connection request', 'error');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleAccept = async () => {
-    if (!connectionId) return;
-
+    if (!pendingConnectionId || isActing) return;
+    setIsActing(true);
     try {
-      await acceptConnection(connectionId);
-      setConnectionStatus('accepted');
-      showNotification('Connection accepted!', 'success');
+      await acceptConnection(pendingConnectionId);
+      setConnectionState('accepted');
+      setPendingConnectionId(null);
+      showNotification(`You and ${profile?.name} are now connected.`, 'success');
     } catch (e) {
       console.error('Failed to accept connection:', e);
-      showNotification('Failed to accept connection', 'error');
+      showNotification(e?.message || 'Failed to accept connection', 'error');
+    } finally {
+      setIsActing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!pendingConnectionId || isActing) return;
+    setIsActing(true);
+    try {
+      await rejectConnection(pendingConnectionId);
+      setConnectionState('none');
+      setPendingConnectionId(null);
+      showNotification('Connection request declined.', 'info');
+    } catch (e) {
+      console.error('Failed to reject connection:', e);
+      showNotification(e?.message || 'Failed to decline connection', 'error');
+    } finally {
+      setIsActing(false);
     }
   };
 
   const handleMessage = async () => {
-    if (!profile) return;
-
+    if (!profile || isActing) return;
+    setIsActing(true);
     try {
+      // Always go through the app's own chat so one conversation per pair is
+      // guaranteed, then let the host page open its existing ChatModal.
       const chatId = await openDirectChat(
         userId,
         profile.name || 'User',
-        profile.photo || ''
+        profile.photo || '',
+        { name: userData?.name, photo: userData?.photo }
       );
+      if (onStartChat) {
+        onStartChat({
+          chatId,
+          otherUser: { uid: userId, name: profile.name || 'User', photo: profile.photo || '' }
+        });
+      } else {
+        showNotification('Conversation is ready.', 'success');
+      }
       onClose();
-      // In a real app, you would open the chat modal here
-      showNotification('Chat opened!', 'success');
     } catch (e) {
       console.error('Failed to open chat:', e);
-      showNotification('Failed to open chat', 'error');
+      showNotification(e?.message || 'Failed to open chat', 'error');
+    } finally {
+      setIsActing(false);
     }
   };
 
   if (!isOpen) return null;
 
+  const skills = toSkillList(profile?.profile?.skills);
+  const hobbies = toSkillList(profile?.profile?.hobbies);
+  const certifications = toSkillList(profile?.profile?.certifications);
+  const company = isCompany(profile);
+
+  const renderActions = () => {
+    if (isSelf) {
+      return (
+        <>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600 }}>
+            <UserCheck size={14} /> This is you
+          </span>
+          {onEditProfile && (
+            <button type="button" onClick={() => { onClose(); onEditProfile(); }} className="btn btn-gradient" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <UserPlus /> Edit Profile
+            </button>
+          )}
+        </>
+      );
+    }
+
+    switch (connectionState) {
+      case 'accepted':
+        return (
+          <button type="button" onClick={handleMessage} disabled={isActing} className="btn btn-gradient" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <ChatCircleDots /> Message
+          </button>
+        );
+      case 'sent':
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 14px', background: 'rgba(234,179,8,0.12)', color: '#b45309', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600 }}>
+            Request Sent
+          </span>
+        );
+      case 'received':
+        // Accept / Decline only makes sense for a request addressed to me.
+        return (
+          <>
+            <button type="button" onClick={handleAccept} disabled={isActing} className="btn btn-gradient" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <UserPlus /> Accept
+            </button>
+            <button type="button" onClick={handleReject} disabled={isActing} className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <X /> Decline
+            </button>
+          </>
+        );
+      default:
+        return (
+          <button type="button" onClick={handleConnect} disabled={isActing} className="btn btn-gradient" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <UserPlus /> Connect
+          </button>
+        );
+    }
+  };
+
   return (
     <div className="modal-wrap active" id="viewProfileModal">
       <div className="modal-box" style={{ maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-          <h3 style={{ fontSize: '1.5rem' }}>Profile</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.8rem', color: 'var(--gray)', cursor: 'pointer' }}>&times;</button>
+          <h3 style={{ fontSize: '1.5rem' }}>{isSelf ? 'My Profile' : 'Profile'}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: '1.8rem', color: 'var(--gray)', cursor: 'pointer' }}>&times;</button>
         </div>
 
         {isLoading ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
-            <div style={{ width: '40px', height: '40px', border: '4px solid rgba(99,102,241,0.2)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <div className="spinner" style={{ width: '40px', height: '40px', border: '4px solid rgba(99,102,241,0.2)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           </div>
-        ) : profile ? (
+        ) : error || !profile ? (
+          <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--gray)' }}>
+            <User size={48} style={{ opacity: 0.3, marginBottom: '15px' }} />
+            <p>{error || 'Profile not found'}</p>
+            <button type="button" onClick={loadProfile} className="btn btn-outline" style={{ marginTop: '15px' }}>Retry</button>
+          </div>
+        ) : (
           <div style={{ display: 'grid', gap: '20px' }}>
-            {/* Profile Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '20px', background: '#f8fafc', borderRadius: '14px' }}>
-              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', padding: '20px', background: '#f8fafc', borderRadius: '14px', flexWrap: 'wrap' }}>
+              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                 {profile.photo ? (
-                  <img src={profile.photo} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={profile.photo} alt={profile.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <User style={{ fontSize: '3rem', color: 'var(--gray)' }} />
+                  <User size={48} style={{ color: 'var(--gray)' }} />
                 )}
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: '200px' }}>
                 <h3 style={{ fontSize: '1.3rem', marginBottom: '4px' }}>{profile.name || 'User'}</h3>
-                <p style={{ fontSize: '0.95rem', color: 'var(--gray)', marginBottom: '8px' }}>{profile.profile?.jobTitle || 'Job Seeker'}</p>
-                {user && user.uid !== userId && (
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    {connectionStatus === 'accepted' ? (
-                      <button onClick={handleMessage} className="btn btn-gradient" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <ChatCircleDots /> Message
-                      </button>
-                    ) : connectionStatus === 'pending' ? (
-                      <StatusBadge status={connectionStatus} />
-                    ) : (
-                      <button onClick={handleConnect} className="btn btn-gradient" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <User /> Connect
-                      </button>
-                    )}
-                  </div>
-                )}
+                <p style={{ fontSize: '0.95rem', color: 'var(--gray)', marginBottom: '8px' }}>
+                  {profile.profile?.jobTitle || (company ? 'Company' : 'Job Seeker')}
+                </p>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {company && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 12px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 600 }}>
+                      <Buildings size={13} /> Company
+                    </span>
+                  )}
+                  {profile.profile?.location && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 12px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '0.75rem', color: 'var(--gray)', fontWeight: 600 }}>
+                      <MapPin size={13} /> {profile.profile.location}
+                    </span>
+                  )}
+                </div>
               </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>{renderActions()}</div>
             </div>
 
-            {/* Basic Information */}
-            <ProfileSection title="Basic Information" icon={User}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <ProfileField label="Email" value={profile.email} icon={Envelope} />
-                <ProfileField label="Phone" value={profile.profile?.phone} icon={Phone} />
-                <ProfileField label="Date of Birth" value={profile.profile?.dob} icon={Calendar} />
-                <ProfileField label="Gender" value={profile.profile?.gender} />
-                <ProfileField label="Location" value={profile.profile?.location} icon={MapPin} />
-                <ProfileField label="Nationality" value={profile.profile?.nationality} />
-              </div>
-              {profile.profile?.bio && (
-                <div style={{ marginTop: '16px' }}>
-                  <p style={{ fontSize: '0.95rem', color: 'var(--dark)', lineHeight: '1.6' }}>{profile.profile.bio}</p>
-                </div>
-              )}
-            </ProfileSection>
+            {/* Public-only notice */}
+            {!isSelf && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--gray)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Globe size={14} /> Only information this member has chosen to publish publicly is shown.
+              </p>
+            )}
 
-            {/* Professional Information */}
-            <ProfileSection title="Professional Information" icon={Briefcase}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <ProfileField label="Job Title" value={profile.profile?.jobTitle} />
-                <ProfileField label="Years of Experience" value={profile.profile?.experience} />
-                <ProfileField label="Expected Salary" value={profile.profile?.salary} />
-                <ProfileField label="Work Type" value={profile.profile?.workType} />
-              </div>
-              {profile.profile?.skills && (
-                <div style={{ marginTop: '16px' }}>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Skills</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {profile.profile.skills.split(',').map((skill, i) => (
-                      <span key={i} style={{ padding: '6px 12px', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', borderRadius: '20px', fontSize: '0.85rem' }}>{skill.trim()}</span>
-                    ))}
-                  </div>
+            {/* About */}
+            {profile.profile?.bio && (
+              <ProfileSection title="About" icon={User}>
+                <p style={{ fontSize: '0.95rem', color: 'var(--dark)', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{profile.profile.bio}</p>
+              </ProfileSection>
+            )}
+
+            {/* Basic information - private details are the owner's own only */}
+            {(isSelf || profile.profile?.phone) && (
+              <ProfileSection title="Basic Information" icon={User}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  {isSelf && <ProfileField label="Email" value={profile.email} icon={Envelope} />}
+                  <ProfileField label="Phone" value={profile.profile?.phone} icon={Phone} />
+                  <ProfileField label="Date of Birth" value={profile.profile?.dob} icon={Calendar} />
+                  <ProfileField label="Gender" value={profile.profile?.gender} />
+                  <ProfileField label="Location" value={profile.profile?.location} icon={MapPin} />
+                  <ProfileField label="Nationality" value={profile.profile?.nationality} />
                 </div>
-              )}
-              {profile.profile?.hobbies && (
-                <div style={{ marginTop: '16px' }}>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Hobbies</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {profile.profile.hobbies.split(',').map((hobby, i) => (
-                      <span key={i} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', color: '#059669', borderRadius: '20px', fontSize: '0.85rem' }}>{hobby.trim()}</span>
-                    ))}
-                  </div>
+              </ProfileSection>
+            )}
+
+            {/* Professional information */}
+            {(profile.profile?.jobTitle || profile.profile?.experience || profile.profile?.workType || skills.length > 0 || company) && (
+              <ProfileSection title="Professional Information" icon={Briefcase}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <ProfileField label="Job Title" value={profile.profile?.jobTitle} />
+                  {company && <ProfileField label="Company" value={profile.profile?.company} />}
+                  <ProfileField label="Years of Experience" value={profile.profile?.experience} />
+                  <ProfileField label="Expected Salary" value={profile.profile?.salary} />
+                  <ProfileField label="Work Type" value={profile.profile?.workType} />
                 </div>
-              )}
-            </ProfileSection>
+                {skills.length > 0 && (
+                  <div style={{ marginTop: '16px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Skills</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {skills.map((skill) => <Chip key={skill}>{skill}</Chip>)}
+                    </div>
+                  </div>
+                )}
+                {hobbies.length > 0 && (
+                  <div style={{ marginTop: '16px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Hobbies</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {hobbies.map((hobby) => <Chip key={hobby} tone="green">{hobby}</Chip>)}
+                    </div>
+                  </div>
+                )}
+              </ProfileSection>
+            )}
 
             {/* Education */}
-            <ProfileSection title="Education" icon={() => <i className="ph ph-graduation-cap" style={{ color: 'var(--primary)' }} />}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <ProfileField label="Degree" value={profile.profile?.degree} />
-                <ProfileField label="Institution" value={profile.profile?.institution} />
-                <ProfileField label="Graduation Year" value={profile.profile?.gradYear} />
-                <ProfileField label="GPA / Marks" value={profile.profile?.marks} />
-              </div>
-              {profile.profile?.certifications && (
-                <div style={{ marginTop: '16px' }}>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Certifications</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {profile.profile.certifications.split(',').map((cert, i) => (
-                      <span key={i} style={{ padding: '6px 12px', background: 'rgba(234,179,8,0.1)', color: '#d97706', borderRadius: '20px', fontSize: '0.85rem' }}>{cert.trim()}</span>
-                    ))}
-                  </div>
+            {(profile.profile?.degree || profile.profile?.institution || certifications.length > 0) && (
+              <ProfileSection title="Education" icon={Briefcase}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                  <ProfileField label="Degree" value={profile.profile?.degree} />
+                  <ProfileField label="Institution" value={profile.profile?.institution} />
+                  <ProfileField label="Graduation Year" value={profile.profile?.gradYear} />
+                  <ProfileField label="GPA / Marks" value={profile.profile?.marks} />
                 </div>
-              )}
-            </ProfileSection>
+                {certifications.length > 0 && (
+                  <div style={{ marginTop: '16px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '4px' }}>Certifications</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {certifications.map((cert) => <Chip key={cert} tone="amber">{cert}</Chip>)}
+                    </div>
+                  </div>
+                )}
+              </ProfileSection>
+            )}
 
-            {/* Resume */}
-            {profile.profile?.resumeUrl && (
+            {/* Resume - owner's own document only */}
+            {isSelf && profile.profile?.resumeUrl && (
               <ProfileSection title="Resume" icon={FileText}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '10px' }}>
-                  <FileText style={{ fontSize: '2rem', color: '#059669' }} />
+                  <FileText size={32} style={{ color: '#059669' }} />
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: 600, color: '#059669', fontSize: '0.9rem' }}>Resume</p>
                     <p style={{ fontSize: '0.85rem', color: 'var(--gray)', marginTop: '2px' }}>{profile.profile.resumeFileName || 'resume.pdf'}</p>
@@ -288,19 +425,17 @@ export default function ViewProfileModal({ isOpen, onClose, userId }) {
               </ProfileSection>
             )}
 
-            {/* Social Links */}
+            {/* Social links */}
             {(profile.profile?.linkedin || profile.profile?.github || profile.profile?.portfolio) && (
               <ProfileSection title="Social & Portfolio Links" icon={Link}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                  <SocialLink url={profile.profile?.linkedin} icon={() => <i className="ph-fill ph-linkedin-logo" />} />
-                  <SocialLink url={profile.profile?.github} icon={() => <i className="ph-fill ph-github-logo" />} />
-                  <SocialLink url={profile.profile?.portfolio} icon={() => <i className="ph ph-globe" />} />
+                  <SocialLink url={profile.profile?.linkedin} icon={Briefcase} label="LinkedIn" />
+                  <SocialLink url={profile.profile?.github} icon={Briefcase} label="GitHub" />
+                  <SocialLink url={profile.profile?.portfolio} icon={Globe} label="Portfolio" />
                 </div>
               </ProfileSection>
             )}
           </div>
-        ) : (
-          <p style={{ textAlign: 'center', color: 'var(--gray)', padding: '40px' }}>Profile not found</p>
         )}
       </div>
     </div>

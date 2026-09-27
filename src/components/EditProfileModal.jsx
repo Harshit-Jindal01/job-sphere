@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Envelope, Phone, Calendar, MapPin, Briefcase, FileText, Upload, Link } from '@phosphor-icons/react';
+import { User, Envelope, Phone, Calendar, MapPin, Briefcase, FileText, Upload, Link } from '@phosphor-icons/react';
 import { useAuth } from '../context/AuthContext';
 import { useNotification } from '../context/NotificationContext';
 import { uploadToCloudinary, updateUserProfile, fetchCurrentUserProfile } from '../services/firebaseService';
@@ -16,24 +16,29 @@ const ProfileSection = ({ title, children }) => (
   </div>
 );
 
-const InputField = ({ label, type = 'text', value, onChange, placeholder, icon: Icon, required = false, options = null }) => (
-  <div style={{ marginBottom: '16px' }}>
-    <label style={{ display: 'block', marginBottom: '6px', color: 'var(--gray)', fontSize: '0.85rem', fontWeight: '600' }}>
-      {label} {required && <span style={{ color: 'var(--primary)' }}>*</span>}
-    </label>
-    {options ? (
-      <select value={value} onChange={onChange} style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', width: '100%', fontSize: '0.95rem', fontFamily: 'inherit' }}>
-        <option value="">Select {label}</option>
-        {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-      </select>
-    ) : (
-      <div style={{ position: 'relative' }}>
-        {Icon && <Icon style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--gray)', fontSize: '1.1rem' }} />}
-        <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={{ padding: '12px 12px 12px 40px', border: '1px solid #e2e8f0', borderRadius: '10px', width: '100%', fontSize: '0.95rem', fontFamily: 'inherit' }} />
-      </div>
-    )}
-  </div>
-);
+const InputField = ({ label, name, type = 'text', value, onChange, placeholder, icon: Icon, required = false, options = null }) => {
+  // `name`/`id` keep the label associated with its control (and let the field
+  // be addressed directly, e.g. by autofill or tests).
+  const id = name || label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <label htmlFor={id} style={{ display: 'block', marginBottom: '6px', color: 'var(--gray)', fontSize: '0.85rem', fontWeight: '600' }}>
+        {label} {required && <span style={{ color: 'var(--primary)' }}>*</span>}
+      </label>
+      {options ? (
+        <select id={id} name={id} value={value} onChange={onChange} style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: '10px', width: '100%', fontSize: '0.95rem', fontFamily: 'inherit' }}>
+          <option value="">Select {label}</option>
+          {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      ) : (
+        <div style={{ position: 'relative' }}>
+          {Icon && <Icon style={{ position: 'absolute', left: '12px', top: '13px', color: 'var(--gray)', fontSize: '1.1rem' }} />}
+          <input id={id} name={id} type={type} value={value} onChange={onChange} placeholder={placeholder} style={{ padding: '12px 12px 12px 40px', border: '1px solid #e2e8f0', borderRadius: '10px', width: '100%', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ResumeUpload = ({ resumeName, onFileChange }) => (
   <div style={{ background: '#f8fafc', borderRadius: '14px', padding: '20px', marginBottom: '16px' }}>
@@ -67,7 +72,7 @@ const SocialLinkInput = ({ label, value, onChange, placeholder, icon: Icon }) =>
   </div>
 );
 
-export default function EditProfileModal({ isOpen, onClose }) {
+export default function EditProfileModal({ isOpen, onClose, onSaved }) {
   const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState({
     fullName: '',
@@ -200,10 +205,11 @@ export default function EditProfileModal({ isOpen, onClose }) {
 
       await updateUserProfile(user.uid, updatedData);
       showNotification('Profile updated successfully!', 'success');
+      onSaved?.();
       onClose();
     } catch (e) {
       console.error('Update error:', e);
-      showNotification('Failed to update profile', 'error');
+      showNotification(e?.message || 'Failed to update profile', 'error');
     } finally {
       setIsLoading(false);
     }
